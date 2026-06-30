@@ -227,6 +227,44 @@ encrypt_yaml_to_target() {
   run_sops_encrypt_yaml "$recipients_csv" "$target"
 }
 
+run_mkpasswd() {
+  run_command_with_nix_fallback nixpkgs#mkpasswd mkpasswd "$@"
+}
+
+# Rewrite the &main / &recovery anchors in .sops.yaml to the current public
+# keys. Required after generating new keys, otherwise later `sops` edits would
+# re-encrypt secrets to the old (lost) recipients.
+update_sops_anchors() {
+  local sops_cfg="$repo_root/.sops.yaml"
+  local new_main new_recovery tmp
+
+  if [ ! -f "$sops_cfg" ]; then
+    echo "error: missing $sops_cfg" >&2
+    return 1
+  fi
+
+  new_main="$(read_first_meaningful_line "$main_pub")"
+  new_recovery="$(read_first_meaningful_line "$recovery_pub")"
+  if [ -z "$new_main" ] || [ -z "$new_recovery" ]; then
+    echo "error: empty main/recovery public key while updating .sops.yaml" >&2
+    return 1
+  fi
+
+  tmp="$(mktemp)"
+  sed -E \
+    -e "s/(&main[[:space:]]+)age1[a-z0-9]+/\1${new_main}/" \
+    -e "s/(&recovery[[:space:]]+)age1[a-z0-9]+/\1${new_recovery}/" \
+    "$sops_cfg" >"$tmp"
+
+  if ! grep -q "$new_main" "$tmp" || ! grep -q "$new_recovery" "$tmp"; then
+    rm -f "$tmp"
+    echo "error: failed to update .sops.yaml anchors (pattern not found)" >&2
+    return 1
+  fi
+  mv "$tmp" "$sops_cfg"
+  echo "updated .sops.yaml anchors (&main, &recovery)"
+}
+
 # ── subcommands ───────────────────────────────────────────────
 
 cmd_init() {
@@ -508,6 +546,105 @@ cmd_rekey() {
   echo "rekey completed."
 }
 
+# Lost-key recovery. Both main and recovery private keys are gone, so the old
+# secrets are unrecoverable; generate fresh keys and rebuild the secrets that
+# must exist for a host to boot (passwords + aria2). Prompts for a new password
+# interactively; password generation can never be silently automated.
+cmd_reset() {
+  local assume_yes=0
+  if [ "${1:-}" = "--yes" ]; then
+    assume_yes=1
+    shift
+  fi
+  if [ "$#" -ne 0 ]; then
+    echo "error: unexpected arguments for reset" >&2
+    exit 2
+  fi
+
+  confirm_destructive_action \
+    "RESET SOPS KEYS" \
+    "warning: this generates brand new main + recovery age keys and rebuilds password/aria2 secrets. Old secrets stay unrecoverable. Back up the new recovery key afterwards." \
+    "$assume_yes"
+
+  mkdir -p "$key_dir" "$secrets_key_dir"
+
+  # 1. New main + recovery key pairs (overwrite any stale/partial files).
+  run_age_keygen -o "$main_key" >/dev/null
+  chmod 0400 "$main_key"
+  run_age_keygen -y "$main_key" >"$main_pub"
+  run_age_keygen -o "$recovery_key" >/dev/null
+  chmod 0400 "$recovery_key"
+  run_age_keygen -y "$recovery_key" >"$recovery_pub"
+  echo "generated new main + recovery keys"
+
+  # 2. Point .sops.yaml at the new recipients.
+  update_sops_anchors
+
+  local recipients_csv
+  recipients_csv="$(collect_age_recipients_csv)"
+
+  # 3. Prompt for a new login password (used for both user and root) and hash it.
+  local pw1="" pw2=""
+  if [ ! -t 0 ]; then
+    echo "error: reset needs an interactive terminal to read the new password" >&2
+    exit 1
+  fi
+  while :; do
+    printf 'New login password (user + root): ' >&2
+    IFS= read -rs pw1
+    printf '\n' >&2
+    printf 'Repeat new password: ' >&2
+    IFS= read -rs pw2
+    printf '\n' >&2
+    if [ -z "$pw1" ]; then
+      echo "password must not be empty; try again" >&2
+      continue
+    fi
+    if [ "$pw1" != "$pw2" ]; then
+      echo "passwords did not match; try again" >&2
+      continue
+    fi
+    break
+  done
+
+  local password_hash=""
+  password_hash="$(printf '%s' "$pw1" | run_mkpasswd -m sha-512 -s)"
+  pw1=""
+  pw2=""
+  if [ -z "$password_hash" ]; then
+    echo "error: failed to generate password hash" >&2
+    exit 1
+  fi
+
+  local user_secret="$repo_root/secrets/common/passwords/user-password.yaml"
+  local root_secret="$repo_root/secrets/common/passwords/root-password.yaml"
+  encrypt_yaml_to_target "$user_secret" "$recipients_csv" <<EOF_HASH
+value: "$password_hash"
+EOF_HASH
+  encrypt_yaml_to_target "$root_secret" "$recipients_csv" <<EOF_HASH
+value: "$password_hash"
+EOF_HASH
+  echo "rebuilt password secrets (user + root)"
+
+  # 4. Regenerate the aria2 RPC token (its value is an opaque random secret).
+  local aria2_secret="$repo_root/secrets/common/services/aria2-rpc-secret.yaml"
+  local aria2_token=""
+  aria2_token="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom 2>/dev/null | head -c 48 || true)"
+  if [ "${#aria2_token}" -ne 48 ]; then
+    echo "error: failed to generate aria2 RPC token" >&2
+    exit 1
+  fi
+  encrypt_yaml_to_target "$aria2_secret" "$recipients_csv" <<EOF_ARIA2
+value: "$aria2_token"
+EOF_ARIA2
+  echo "regenerated aria2 RPC secret"
+
+  echo ""
+  echo "reset complete. next steps:"
+  echo "  - BACK UP the new recovery key somewhere safe: $recovery_key"
+  echo "  - after install, commit the updated .sops.yaml + secrets/ from the target"
+}
+
 # ── usage ─────────────────────────────────────────────────────
 usage() {
   cat <<'EOF'
@@ -515,6 +652,9 @@ usage: sops.sh <command> [args]
 
 commands:
   init [--create|--rotate] [--yes]  Initialize/sync main age key
+  reset [--yes]                  Lost-key recovery: new main+recovery keys,
+                                 rewrite .sops.yaml, prompt new password,
+                                 regenerate aria2 secret
   password-set <sha512-hash>     Encrypt password hash for user + root
   ssh-key-set                    Encrypt .keys/github_id_ed25519 via sops (SOPS_USER overrides target user)
   recovery-init [--force]        Create/update recovery key pair
@@ -534,6 +674,7 @@ shift
 
 case "$cmd" in
 init) cmd_init "$@" ;;
+reset) cmd_reset "$@" ;;
 password-set) cmd_password_set "$@" ;;
 ssh-key-set) cmd_ssh_key_set "$@" ;;
 recovery-init) cmd_recovery_init "$@" ;;

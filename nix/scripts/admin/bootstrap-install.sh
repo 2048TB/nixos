@@ -26,6 +26,8 @@ examples:
   - --disk   目标磁盘（如 /dev/nvme0n1）；会被清空
   - --repo   仓库路径，默认当前目录
   - --yes    跳过确认（自动化场景）；交给 install-live.sh 处理
+  - --reset-secrets  没有 sops key 时，生成新 key 并重建密码/aria2 secret
+                     （丢失 key 的恢复场景；会提示你输入新密码）
 EOF
 }
 
@@ -35,6 +37,7 @@ repo="${NIXOS_CONFIG_REPO:-$PWD}"
 repo_explicit=0
 assume_yes=0
 age_key_rel=".keys/main.agekey"
+reset_secrets=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -65,6 +68,10 @@ while [ "$#" -gt 0 ]; do
     ;;
   --yes)
     assume_yes=1
+    shift
+    ;;
+  --reset-secrets)
+    reset_secrets=1
     shift
     ;;
   -h | --help)
@@ -118,19 +125,7 @@ if [ ! -f "$repo/nix/hosts/nixos/$host/vars.nix" ]; then
     "可用主机：$(find "$repo/nix/hosts/nixos" -maxdepth 1 -mindepth 1 -type d ! -name '_*' -printf '%f ' 2>/dev/null)"
 fi
 
-# 3. 密码 secret 必须已存在（首次 bootstrap 才需要创建；重装通常已就位）。
-missing_password=0
-for f in user-password.yaml root-password.yaml; do
-  [ -f "$repo/secrets/common/passwords/$f" ] || missing_password=1
-done
-if [ "$missing_password" -eq 1 ]; then
-  fail_with_hint "缺少密码 secret（secrets/common/passwords/*.yaml）" \
-    "这是首次 bootstrap 才需要的一次性步骤。请先生成密码哈希：" \
-    "  nix shell nixpkgs#mkpasswd -c mkpasswd -m sha-512" \
-    "再用 sops 把哈希写入 user-password.yaml / root-password.yaml，详见 docs/README.md 第 5 节。"
-fi
-
-# 4. sops main.agekey 必须能在搜索路径之一找到（权威校验在 install-live.sh）。
+# 3. sops main.agekey：能找到就用；找不到则在确认后生成新 key 并重建 secret。
 key_found=""
 for cand in "$PWD/$age_key_rel" "$repo/$age_key_rel" "${HOME:-}/$age_key_rel"; do
   [ -n "$cand" ] || continue
@@ -139,11 +134,46 @@ for cand in "$PWD/$age_key_rel" "$repo/$age_key_rel" "${HOME:-}/$age_key_rel"; d
     break
   fi
 done
+
+did_reset=0
 if [ -z "$key_found" ]; then
-  fail_with_hint "未找到 sops 私钥 main.agekey" \
-    "把与 secrets/keys/main.age.pub 匹配的私钥放到以下任一路径：" \
-    "  ./$age_key_rel  或  $repo/$age_key_rel  或  ~/$age_key_rel" \
-    "首次 bootstrap 可执行：bash nix/scripts/admin/sops.sh init --create"
+  do_reset="$reset_secrets"
+  if [ "$do_reset" -ne 1 ]; then
+    if [ -t 0 ]; then
+      echo "未找到 sops 私钥 main.agekey。" >&2
+      printf '是否生成新 key 并重建密码/aria2 secret？这会让旧 secret 永久作废。[y/N] ' >&2
+      IFS= read -r ans
+      case "$ans" in
+      y | Y | yes | YES) do_reset=1 ;;
+      *) do_reset=0 ;;
+      esac
+    fi
+  fi
+  if [ "$do_reset" -eq 1 ]; then
+    echo ">>> 运行 sops.sh reset（会提示你输入新密码）"
+    NIXOS_CONFIG_REPO="$repo" bash "$script_dir/sops.sh" reset --yes
+    did_reset=1
+    key_found="$repo/$age_key_rel"
+  else
+    fail_with_hint "未找到 sops 私钥 main.agekey" \
+      "把与 secrets/keys/main.age.pub 匹配的私钥放到以下任一路径：" \
+      "  ./$age_key_rel  或  $repo/$age_key_rel  或  ~/$age_key_rel" \
+      "或加 --reset-secrets 生成新 key 并重建 secret（旧 secret 会作废）。"
+  fi
+fi
+
+# 4. 密码 secret 必须存在（若刚 reset 过，已一并重建）。
+if [ "$did_reset" -ne 1 ]; then
+  missing_password=0
+  for f in user-password.yaml root-password.yaml; do
+    [ -f "$repo/secrets/common/passwords/$f" ] || missing_password=1
+  done
+  if [ "$missing_password" -eq 1 ]; then
+    fail_with_hint "缺少密码 secret（secrets/common/passwords/*.yaml）" \
+      "用 --reset-secrets 可在装机时一并重建，或先手动创建：" \
+      "  bash nix/scripts/admin/sops.sh reset" \
+      "详见 docs/README.md 第 5 节。"
+  fi
 fi
 
 echo "✓ 飞行前检查通过"

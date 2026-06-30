@@ -105,8 +105,21 @@ bash nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1
 
 - 重装已有主机：密码 secret 仓库里已有，只需把 `main.agekey` 放到 `./.keys/`、`<repo>/.keys/` 或 `~/.keys/` 任一处即可。
 - 首次从零 bootstrap：脚本会在缺 key / 缺密码 secret 时停下并给出对应命令（见下）。
+- 丢失 key 恢复：若 `main.agekey` 已丢失（且无 recovery key 可解开旧 secret），加 `--reset-secrets`，脚本会生成新 key、改写 `.sops.yaml`、提示你输入新密码并重建密码/aria2 secret：
 
-首次 bootstrap 需要先建立 sops key 与密码 secret：
+```bash
+bash nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1 --reset-secrets
+```
+
+  交互运行时也可不加该参数——脚本检测到缺 key 会询问是否重建。重建后请**备份新的 recovery.agekey**，并在装好的系统上 commit 更新后的 `.sops.yaml` 与 `secrets/`。
+
+首次 bootstrap 需要先建立 sops key 与密码 secret。可以一步到位用 `sops.sh reset`（生成 main+recovery key、提示输入密码、重建密码/aria2 secret）：
+
+```bash
+bash nix/scripts/admin/sops.sh reset
+```
+
+或分步手动：
 
 ```bash
 bash nix/scripts/admin/sops.sh init --create
