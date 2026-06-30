@@ -13,6 +13,7 @@ let
   packageGroups = import ./package-groups.nix;
   packageGroupOrder =
     [
+      "shared"
       "cli"
       "dev"
       "archive"
@@ -87,10 +88,9 @@ let
     pkgs.gcc
   ];
 
-  basePackageNames = lib.flatten [
-    mylib.sharedPackageNames
-    (map (groupName: packageGroups.${groupName}) packageGroupOrder)
-  ];
+  basePackageNames = lib.flatten (
+    map (groupName: packageGroups.${groupName}) packageGroupOrder
+  );
   basePackageSelection = mylib.resolvePackagesByName pkgs basePackageNames;
   basePackages = basePackageSelection.packages ++ lib.optional (cherryStudioPackage != null) cherryStudioPackage;
 in

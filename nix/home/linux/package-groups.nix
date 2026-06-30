@@ -1,4 +1,22 @@
 {
+  # Linux/Darwin 共享的高频 CLI 包，统一来源以减少平台漂移。
+  shared = [
+    "git"
+    "gh"
+    "mise"
+    "tmux"
+    "television"
+    "zellij"
+    "yazi"
+    "bat"
+    "fd"
+    "eza"
+    "ripgrep"
+    "jq"
+    "wget"
+    "just"
+  ];
+
   cli = [
     "bubblewrap"
     "ripgrep-all"

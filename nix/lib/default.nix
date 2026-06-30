@@ -137,23 +137,8 @@ rec {
     ;
   inherit defaultHomeStateVersion;
 
-  # Linux/Darwin 共享的高频 CLI 包，统一来源以减少平台漂移。
-  sharedPackageNames = [
-    "git"
-    "gh"
-    "mise"
-    "tmux"
-    "television"
-    "zellij"
-    "yazi"
-    "bat"
-    "fd"
-    "eza"
-    "ripgrep"
-    "jq"
-    "wget"
-    "just"
-  ];
+  # Linux/Darwin 共享的高频 CLI 包；单一事实源在 package-groups.nix。
+  sharedPackageNames = (import ../home/linux/package-groups.nix).shared;
 
   resolvePackageByName =
     pkgs: name:
