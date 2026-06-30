@@ -20,6 +20,7 @@
 
 当前仓库只保留少量运维脚本入口：
 
+- `nix/scripts/admin/bootstrap-install.sh`
 - `nix/scripts/admin/install-live.sh`
 - `nix/scripts/admin/print-flake-repo.sh`
 - `nix/scripts/admin/update-flake.sh`
@@ -93,14 +94,25 @@ nix flake show "path:$flake_repo"
 
 ### 5.1 Live ISO 最短流程
 
+最简单的方式是用 `bootstrap-install.sh`：它先做飞行前检查（repo、主机名、密码 secret、sops key 是否就位），缺什么就直接告诉你要跑哪条命令，全部就位后再把清空磁盘 + 安装交给 `install-live.sh`：
+
 ```bash
 git clone https://github.com/2048TB/nixos-config.git ~/nixos
 cd ~/nixos
 export NIX_CONFIG="experimental-features = nix-command flakes"
+bash nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1
+```
+
+- 重装已有主机：密码 secret 仓库里已有，只需把 `main.agekey` 放到 `./.keys/`、`<repo>/.keys/` 或 `~/.keys/` 任一处即可。
+- 首次从零 bootstrap：脚本会在缺 key / 缺密码 secret 时停下并给出对应命令（见下）。
+
+首次 bootstrap 需要先建立 sops key 与密码 secret：
+
+```bash
 bash nix/scripts/admin/sops.sh init --create
 bash nix/scripts/admin/sops.sh recovery-init
 nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#mkpasswd -c mkpasswd -m sha-512
-bash nix/scripts/admin/install-live.sh --host zly --disk /dev/nvme0n1 --repo "$PWD"
+# 用上一步得到的哈希，通过 sops 写入 secrets/common/passwords/{user,root}-password.yaml
 ```
 
 若已有旧 `main.agekey`，先放到以下任一位置，再执行 `bash nix/scripts/admin/sops.sh init`：
