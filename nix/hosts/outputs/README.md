@@ -5,9 +5,12 @@
 ## 主要文件
 
 - `default.nix`：总入口
-- `common.nix`：共享 registry 校验与 eval helper
-- `x86_64-linux/default.nix`：NixOS 聚合、checks、apps
-- `aarch64-darwin/default.nix`：Darwin 聚合、checks、apps
+- `common.nix`：共享 registry 校验、eval helper 与 host-data 组装（`collectHostData`）
+- `x86_64-linux/default.nix`：NixOS 聚合（薄编排）、checks、devShells
+- `aarch64-darwin/default.nix`：Darwin 聚合、checks
+- `ml-shell.nix`：CUDA ML devShell（从 x86_64 入口拆出）
+- `eval-tests.nix`：NixOS eval-test 规格构造（从 x86_64 入口拆出）
+- `lint-checks.nix`：pre-commit / format-sanity check 构造（从 x86_64 入口拆出）
 
 ## 自动发现
 
@@ -29,8 +32,7 @@
 
 当前 `apps` 行为：
 
-- Linux：仅保留 `install`
-- Darwin：不导出 app
+- Linux 与 Darwin 均不导出 app（旧的 `install` app 已移除，安装走 `nix/scripts/admin/bootstrap-install.sh`）
 
 当前 `devShells` 行为：
 

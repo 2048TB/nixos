@@ -235,6 +235,7 @@ bash nix/scripts/admin/guard-secrets.sh --all-tracked
 bash nix/scripts/admin/sops.sh init
 bash nix/scripts/admin/sops.sh init --create
 bash nix/scripts/admin/sops.sh init --rotate
+bash nix/scripts/admin/sops.sh reset
 bash nix/scripts/admin/sops.sh recovery-init
 bash nix/scripts/admin/sops.sh recipients
 bash nix/scripts/admin/sops.sh rekey
@@ -247,6 +248,7 @@ bash nix/scripts/admin/sops.sh password-set '<sha512-hash>'
 - `init`：同步已有 `main.agekey`
 - `init --create`：创建新的 `main.agekey`
 - `init --rotate [--yes]`：生成新的 `main.agekey`，更新 `secrets/keys/main.age.pub`，并保留旧 key 为 `.keys/main.agekey.pre-rotate.<timestamp>`
+- `reset [--yes]`：丢失 key 的恢复入口（旧 main+recovery 都无法解密时使用）。生成新的 `main` + `recovery` key，把 `.sops.yaml` 的 `&main`/`&recovery` 锚点改写为新公钥，交互提示输入新登录密码（`mkpasswd -m sha-512`，写入 user + root），并重建 `aria2-rpc-secret.yaml`；旧 secret 内容永久作废。完成后需备份新的 `recovery.agekey`，并在装好的系统上提交更新后的 `.sops.yaml` 与 `secrets/`
 - `rekey`：先校验 `.sops.yaml` 必须包含 `secrets/common/`、`secrets/hosts/<host>/`、`secrets/users/<user>/`、`secrets/install/`，且不得退回 `^secrets/.*\.yaml$` catch-all；再基于当前 `main.agekey`、`recovery.agekey` 和现存 rotation backup keys 构造 identity file，然后对每个 secret 执行 `sops rotate -i --add-age/--rm-age`
 - `recipients`：列出当前收件人
 - `host-add`：把 host SSH public key 同步到 `secrets/keys/hosts/`

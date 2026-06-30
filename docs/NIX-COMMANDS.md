@@ -16,6 +16,8 @@ just validate-local
 ## 2. 安装
 
 ```bash
+# 引导式一键安装（飞行前检查 + 委托 install-live.sh；丢失 key 时加 --reset-secrets）
+bash /persistent/nixos-config/nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1
 bash /persistent/nixos-config/nix/scripts/admin/install-live.sh --host zly --disk /dev/nvme0n1 --repo /persistent/nixos-config
 ```
 
@@ -66,6 +68,7 @@ sudo nix store optimise
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh init
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh init --create
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh init --rotate
+bash /persistent/nixos-config/nix/scripts/admin/sops.sh reset
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh recovery-init
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh host-add zly /etc/ssh/ssh_host_ed25519_key.pub
 bash /persistent/nixos-config/nix/scripts/admin/sops.sh recipients

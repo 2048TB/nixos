@@ -23,8 +23,8 @@ let
   common = import ../_shared/vars-common.nix;
 in
 common // {
-  systemStateVersion = "25.11";
-  homeStateVersion = "25.11";
+  # systemStateVersion / homeStateVersion 默认在 _shared/vars-common.nix；
+  # 仅当某台主机需要不同版本时才在此覆盖。
 
   # Storage / Hibernate
   # Optional: set only when enabling hibernate with a btrfs swapfile.
@@ -131,7 +131,7 @@ displays = []
 
 read-only 验证时，若 checkout 中存在不可读的 `.keys/main.agekey`，先通过 `nix/scripts/admin/print-flake-repo.sh` 获取 filtered repo。
 
-共享校验入口 `nix/hosts/nixos/_shared/checks.nix` 当前仍集中维护，因为 registry metadata、host vars 与模块断言共享同一组派生值。后续若拆分，应优先抽出依赖边界清晰的检查组，并保持对外导入入口不变。
+共享校验入口 `nix/hosts/nixos/_shared/checks.nix` 现在是薄重导出：派生值集中在 `_shared/checks/context.nix`，各内聚检查组拆分到 `_shared/checks/<group>.nix`（host-metadata、boot、kernel、gpu-display、secrets、docker、home-manager），`checks.nix` 计算一次 context 后合并所有组。新增检查时归入对应组文件，并保持 `checks.nix` 的对外导入入口不变。
 
 ## 磁盘布局共性
 

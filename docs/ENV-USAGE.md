@@ -28,10 +28,10 @@
 ```bash
 cd ~/nixos
 export NIX_CONFIG="experimental-features = nix-command flakes"
-bash nix/scripts/admin/install-live.sh --host zly --disk /dev/nvme0n1 --repo "$PWD"
+bash nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1
 ```
 
-手动脚本调用：
+手动脚本调用（底层装盘，bootstrap 最终委托给它）：
 
 ```bash
 cd ~/nixos
@@ -44,6 +44,7 @@ key 相关差异：
 - 搜索顺序：`./.keys/main.agekey` -> `<repo>/.keys/main.agekey` -> `~/.keys/main.agekey`
 - 现在会校验找到的 private key 是否匹配 `<repo>/secrets/keys/main.age.pub`
 - 需要非交互安装时，显式传 `--yes`
+- key 已丢失且无法解开旧 secret 时，给 `bootstrap-install.sh` 加 `--reset-secrets`（或交互确认），会生成新 key 并重建密码/aria2 secret
 
 ## 2. 已安装 NixOS
 

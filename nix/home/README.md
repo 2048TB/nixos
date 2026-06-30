@@ -14,7 +14,7 @@ nix/home/
 │   ├── session.nix     # Linux session vars、activation
 │   ├── files.nix       # repo link / wallpapers / user-level dotfiles / GUI wrapper
 │   ├── packages.nix    # home.packages（含主账号开发环境）
-│   ├── package-groups.nix # Linux 包分类清单（纯数据）
+│   ├── package-groups.nix # 包分类清单（纯数据；含跨平台 shared 组 + Linux 分类）
 │   ├── programs.nix    # fzf/mpv/lutris 等
 │   ├── desktop.nix     # 桌面用户服务、Noctalia 包接入、mise-upgrade service / opt-in timer
 │   └── xdg.nix         # portal/mimeApps/configFile
