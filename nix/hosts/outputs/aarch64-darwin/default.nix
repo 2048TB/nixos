@@ -32,12 +32,12 @@ let
       inherit hostCtx hostChecks;
     };
 
-  data = mylib.mapNamesToAttrs hostNames mkHostData;
-  dataWithoutPaths = builtins.attrValues data;
-
-  darwinConfigurations = mylib.mergeAttrFromList "darwinConfigurations" dataWithoutPaths;
-  mainUsers = mylib.mergeAttrFromList "mainUsers" dataWithoutPaths;
-  resolvedHostNames = builtins.attrNames darwinConfigurations;
+  hostData = common.collectHostData {
+    inherit hostNames mkHostData;
+    configAttrName = "darwinConfigurations";
+  };
+  inherit (hostData) data dataWithoutPaths mainUsers resolvedHostNames;
+  darwinConfigurations = hostData.configurations;
   homeConfigurations = common.mkHomeConfigurations {
     configurations = darwinConfigurations;
     inherit mainUsers system;

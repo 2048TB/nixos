@@ -1,5 +1,25 @@
 { lib, mylib }:
 rec {
+  # Assemble the per-host data map and the merged config views shared by every
+  # platform builder. configAttrName is "nixosConfigurations" or
+  # "darwinConfigurations"; the result exposes both the raw data (for later
+  # mergeAttrFromListWithExtra calls) and the resolved config/user/host views.
+  collectHostData =
+    { hostNames
+    , mkHostData
+    , configAttrName
+    }:
+    let
+      data = mylib.mapNamesToAttrs hostNames mkHostData;
+      dataWithoutPaths = builtins.attrValues data;
+      configurations = mylib.mergeAttrFromList configAttrName dataWithoutPaths;
+      mainUsers = mylib.mergeAttrFromList "mainUsers" dataWithoutPaths;
+      resolvedHostNames = builtins.attrNames configurations;
+    in
+    {
+      inherit data dataWithoutPaths configurations mainUsers resolvedHostNames;
+    };
+
   mkRegistryState =
     { kind
     , hostsRoot

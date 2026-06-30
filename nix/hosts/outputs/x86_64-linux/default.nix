@@ -39,11 +39,12 @@ let
       inherit hostCtx hostChecks;
     };
 
-  data = mylib.mapNamesToAttrs hostNames mkHostData;
-  dataWithoutPaths = builtins.attrValues data;
-  nixosConfigurations = mylib.mergeAttrFromList "nixosConfigurations" dataWithoutPaths;
-  mainUsers = mylib.mergeAttrFromList "mainUsers" dataWithoutPaths;
-  resolvedHostNames = builtins.attrNames nixosConfigurations;
+  hostData = common.collectHostData {
+    inherit hostNames mkHostData;
+    configAttrName = "nixosConfigurations";
+  };
+  inherit (hostData) data dataWithoutPaths mainUsers resolvedHostNames;
+  nixosConfigurations = hostData.configurations;
   homeConfigurations = common.mkHomeConfigurations {
     configurations = nixosConfigurations;
     inherit mainUsers system;
