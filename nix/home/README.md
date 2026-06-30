@@ -27,7 +27,7 @@ nix/home/
 | 目标 | 文件 |
 |------|------|
 | 终端 | `configs/ghostty/`、`configs/foot/`、`configs/shell/` |
-| 共享 CLI 包 | `../lib/default.nix`（`sharedPackageNames`） |
+| 共享 CLI 包 | `linux/package-groups.nix`（`shared` 组） |
 | 跨平台 config file 映射 | `base/config-files.nix` |
 | GUI IDE wrapper | `linux/files.nix` |
 | Television | `configs/television/` + `base/config-files.nix` + `configs/shell/zshrc` |
@@ -40,7 +40,7 @@ nix/home/
 
 额外约束：
 
-- Linux/Darwin 共享 CLI 包入口在 `nix/lib/default.nix` 的 `sharedPackageNames`
+- Linux/Darwin 共享 CLI 包事实源在 `nix/home/linux/package-groups.nix` 的 `shared` 组；`nix/lib/default.nix` 的 `sharedPackageNames` 从该组读取并对外暴露
 - 跨平台共享 config file 映射在 `nix/home/base/config-files.nix`
 - `base/default.nix` 当前会把 `~/.local/share/mise/shims` 放进 session `PATH`
 - `linux/session.nix` 只放通用 GUI/input session vars；CUDA/OpenSSL 工具链变量收敛到 devShell
