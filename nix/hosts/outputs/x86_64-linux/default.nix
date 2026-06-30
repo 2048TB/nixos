@@ -1,4 +1,4 @@
-{ lib, mylib, inputs, system, mkApp, appRepoPreamble, ... }@args:
+{ lib, mylib, inputs, system, ... }@args:
 let
   common = import ../common.nix { inherit lib mylib; };
   hostsRoot = mylib.relativeToRoot "nix/hosts/nixos";
@@ -71,21 +71,8 @@ let
   lintChecks = import ../lint-checks.nix { inherit inputs system pkgs mylib; };
   mlShell = import ../ml-shell.nix { inherit inputs system mylib; };
 
-  mkAppLocal = mkApp pkgs;
   mkEvalCheck = common.mkEvalCheck pkgs;
   evalCheckSpecs = common.mkEvalCheckSpecs "" (hostEvalTests // extraEvalTests);
-  platformApps.${system} = {
-    install = mkAppLocal "install" "Install Linux host on Live ISO with disko+nixos-install" ''
-      ${appRepoPreamble}
-      host="''${NIXOS_HOST:-}"
-      if [ -z "$host" ]; then
-        echo "error: NIXOS_HOST is required for nix run .#install" >&2
-        echo "hint: NIXOS_HOST=${builtins.head resolvedHostNames} NIXOS_DISK_DEVICE=/dev/nvme0n1 nix run .#install" >&2
-        exit 2
-      fi
-      exec ${pkgs.just}/bin/just host="$host" disk="''${NIXOS_DISK_DEVICE:-/dev/nvme0n1}" install
-    '';
-  };
   evalTestChecks.${system} = mylib.specsToAttrs evalCheckSpecs mkEvalCheck;
   platformChecks.${system} = lintChecks.checks;
 
@@ -134,7 +121,7 @@ assert common.assertRegistryState
   inherit data;
   registeredHosts = resolvedHostNames;
   inherit nixosConfigurations homeConfigurations;
-  apps = platformApps;
+  apps = { };
   checks = mylib.mergeAttrFromListWithExtra "checks" dataWithoutPaths [
     evalTestChecks
     platformChecks

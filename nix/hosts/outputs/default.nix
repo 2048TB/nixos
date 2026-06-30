@@ -22,24 +22,8 @@ let
       };
     };
 
-  mkApp = pkgs: scriptName: description: scriptBody: {
-    type = "app";
-    program = "${(pkgs.writeShellScriptBin scriptName scriptBody)}/bin/${scriptName}";
-    meta.description = description;
-  };
-  appRepoPreamble = ''
-    set -euo pipefail
-    repo="''${NIXOS_CONFIG_REPO:-$PWD}"
-    if [ ! -f "$repo/flake.nix" ]; then
-      echo "error: flake.nix not found in repo: $repo" >&2
-      echo "hint: run from repo root or set NIXOS_CONFIG_REPO" >&2
-      exit 1
-    fi
-    cd "$repo"
-  '';
-
   args = {
-    inherit inputs lib mylib genSpecialArgs mkApp appRepoPreamble;
+    inherit inputs lib mylib genSpecialArgs;
     nixpkgsOverlays = [ exportedOverlays.default ];
   };
 
