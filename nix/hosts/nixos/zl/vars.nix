@@ -2,9 +2,6 @@ let
   common = import ../_shared/vars-common.nix;
 in
 common // {
-  systemStateVersion = "25.11";
-  homeStateVersion = "25.11";
-
   # Storage
   # 128GB RAM; 台式机不启用 hibernate，不设 resumeOffset
   swapSizeGb = 128;
