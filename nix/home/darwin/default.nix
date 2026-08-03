@@ -1,6 +1,5 @@
-{ lib, pkgs, mylib, mainUser, myvars, osConfig ? null, ... }:
+{ lib, pkgs, mylib, mainUser, ... }:
 let
-  hostCfg = import ../base/resolve-host.nix { inherit myvars osConfig; };
   configFiles = import ../base/config-files.nix;
   homeDir = "/Users/${mainUser}";
   brewPath = "/opt/homebrew/bin:/usr/local/bin";
@@ -30,7 +29,8 @@ in
   ];
 
   home = {
-    enableNixpkgsReleaseCheck = hostCfg.enableHmReleaseCheck or true;
+    # 与 Linux 侧保持一致：release 检查始终开启（原先的 enableHmReleaseCheck 键无主机使用）。
+    enableNixpkgsReleaseCheck = true;
     username = mainUser;
     homeDirectory = homeDir;
 

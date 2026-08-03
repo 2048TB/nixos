@@ -2,9 +2,7 @@
 let
   hostCfg = config.my.host;
   roleFlags = mylib.roleFlags hostCfg;
-  inherit (roleFlags) enableDocker;
-  useRootlessDocker = hostCfg.dockerMode == "rootless";
-  useRootfulDocker = hostCfg.dockerMode == "rootful";
+  inherit (roleFlags) enableDocker useRootlessDocker useRootfulDocker;
 in
 {
   # Docker 容器（rootful/rootless 可切换）
