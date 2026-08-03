@@ -39,8 +39,11 @@ nix eval "path:$flake_repo#nixosConfigurations" --apply builtins.attrNames
 bash "$REPO/nix/scripts/admin/update-flake.sh" "$REPO"
 bash "$REPO/nix/scripts/admin/update-flake.sh" "$REPO" nixpkgs
 bash "$REPO/nix/scripts/admin/check-format-sanity.sh" --repo "$REPO"
-bash "$REPO/nix/scripts/admin/host-meta-schema-sync.sh"
-nix --extra-experimental-features 'nix-command flakes' shell nixpkgs#check-jsonschema -c check-jsonschema --schemafile "$REPO/nix/hosts/registry/systems.schema.json" "$REPO/nix/hosts/registry/systems.toml"
+```
+
+```bash
+# 查看某台主机的清单条目（唯一事实源：nix/hosts/default.nix）
+nix eval --impure --expr '(import '"$REPO"'/nix/hosts).nixos.zly' --json
 ```
 
 ## 4. 系统切换与清理

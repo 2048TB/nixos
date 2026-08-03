@@ -1,57 +1,50 @@
-# NixOS 主机模板
+# NixOS 主机目录模板
 
-本页只描述 `nix/hosts/nixos/<host>/` 的最小结构，不重复全仓库事实。host metadata 与流程规则见 `nix/hosts/README.md` 和 `docs/README.md`。
+本页只描述 `nix/hosts/nixos/<host>/` 的最小结构。主机参数统一放在清单 `nix/hosts/default.nix`（字段约束见 `nix/hosts/README.md`），本目录只放"描述硬件"的文件。
 
 ## 新增 NixOS 主机时至少要产出
 
-1. `vars.nix`
+1. `nix/hosts/default.nix` 中的清单条目（复制现有条目改）
 2. `hardware.nix`
 3. `hardware-modules.nix`
 4. `disko.nix`
-5. `nix/hosts/registry/systems.toml` 中对应条目
 
 可选：
 
+- `home.nix`：host-only Home Manager 追加
+- `checks.nix`：host-only eval checks
 - 额外 host-only module：例如 `ml-stack.nix`，再由 `hardware.nix` 或其它 host module 显式 `import`
 
 ## 最小模板
 
-### `vars.nix`
+### 清单条目（`nix/hosts/default.nix`）
 
 ```nix
-let
-  common = import ../_shared/vars-common.nix;
-in
-common // {
-  # systemStateVersion / homeStateVersion 默认在 _shared/vars-common.nix；
-  # 仅当某台主机需要不同版本时才在此覆盖。
+nixos = {
+  # 共享默认值在文件顶部 nixosDefaults；这里只写差异。
+  devbox = nixosDefaults // {
+    gpuVendors = [ "amd" ];
+    gpuMode = "amdgpu"; # 或 "nvidia" / "amd-nvidia-hybrid" / "modesetting" / "none"
+    roles = [ "vpn" ]; # 功能开关：gaming / vpn / virt / container
 
-  # Storage / Hibernate
-  # Optional: set only when enabling hibernate with a btrfs swapfile.
-  # resumeOffset = 1234567;
+    # 启用 hibernate（btrfs swapfile）时才需要：
+    # resumeOffset = 1234567;
 
-  # Hardware
-  # CPU vendor is inferred from hardware-modules.nix.
-  gpuMode = "amdgpu";   # or "nvidia" / "amd-nvidia-hybrid"
+    # hybrid GPU 才需要：
+    # amdgpuBusId = "PCI:18@0:0:0";
+    # nvidiaBusId = "PCI:1@0:0:0";
 
-  # Only for hybrid GPU
-  # amdgpuBusId = "PCI:18@0:0:0";
-  # nvidiaBusId = "PCI:1@0:0:0";
+    # NVIDIA 主机需要显式声明内核模块形态：
+    # nvidiaOpen = true;
 
-  # Optional for NVIDIA / container setup
-  # nvidiaOpen = true;
-  # dockerMode = "rootless";
-
-  # Roles
-  roles = [
-    "vpn" # Mullvad app / daemon
-  ];
-}
+    displays = [ ];
+  };
+};
 ```
 
-说明：`../_shared/vars-common.nix` 只放稳定共享默认值；运行时差异仍建议在每台主机里显式定义。
-
 ### `hardware-modules.nix`
+
+nixos-hardware 模块名列表；CPU vendor（microcode / KVM 模块）由此推导：
 
 ```nix
 [
@@ -95,43 +88,25 @@ args@{ mylib, ... }:
 }) args
 ```
 
-### `systems.toml`
+### `disko.nix`
 
-```toml
-[nixos.<new-host>]
-system = "x86_64-linux"
-desktopSession = true
-desktopProfile = "niri"
-kind = "workstation"
-formFactor = "desktop"
-tags = []
-gpuVendors = ["amd"]
-displays = []
+沿用共享 LUKS + btrfs 布局时：
+
+```nix
+import ../_shared/disko-luks-btrfs.nix
 ```
-
-说明：
-
-- Linux `desktopProfile` 当前只支持 `niri`
-- `vpn` role 当前启用 Mullvad app / daemon
-- `displays` 是 monitor topology 的唯一事实源；不要再用 `tags` 表达 `multi-monitor` / `hidpi`
-- 声明 `displays` 时必须且只能有一个 `primary = true`
-- `gpuVendors` 必须与 `gpuMode` 匹配；例如 `amd-nvidia-hybrid` 必须同时声明 `amd` 与 `nvidia`
-- hybrid GPU 主机必须在 `vars.nix` 中声明 `amdgpuBusId` 与 `nvidiaBusId`
-- `gaming` role 必须搭配 `desktopSession = true`
 
 ## 实际数据入口
 
 不要在 README 中抄写当前主机参数；以下文件才是事实源：
 
-- 主机注册与 metadata：`nix/hosts/registry/systems.toml`
-- 某台主机运行时参数：`nix/hosts/nixos/<host>/vars.nix`
-- NixOS 主机共享默认值：`nix/hosts/nixos/_shared/vars-common.nix`
+- 主机清单与全部参数：`nix/hosts/default.nix`
 - 某台主机硬件模块清单：`nix/hosts/nixos/<host>/hardware-modules.nix`
 - 某台主机额外硬件 import：`nix/hosts/nixos/<host>/hardware.nix`
 
 read-only 验证时，若 checkout 中存在不可读的 `.keys/main.agekey`，先通过 `nix/scripts/admin/print-flake-repo.sh` 获取 filtered repo。
 
-共享校验入口 `nix/hosts/nixos/_shared/checks.nix` 现在是薄重导出：派生值集中在 `_shared/checks/context.nix`，各内聚检查组拆分到 `_shared/checks/<group>.nix`（host-metadata、boot、kernel、gpu-display、secrets、docker、home-manager），`checks.nix` 计算一次 context 后合并所有组。新增检查时归入对应组文件，并保持 `checks.nix` 的对外导入入口不变。
+共享校验入口 `nix/hosts/nixos/_shared/checks.nix` 是薄重导出：派生值集中在 `_shared/checks/context.nix`，各内聚检查组拆分到 `_shared/checks/<group>.nix`（host-metadata、boot、kernel、gpu-display、secrets、docker、home-manager），`checks.nix` 计算一次 context 后合并所有组。新增检查时归入对应组文件，并保持 `checks.nix` 的对外导入入口不变。
 
 ## 磁盘布局共性
 
@@ -143,7 +118,7 @@ read-only 验证时，若 checkout 中存在不可读的 `.keys/main.agekey`，�
 - LUKS 内文件系统为 `btrfs`
 - 子卷：`@root`、`@nix`、`@persistent`、`@home`、`@snapshots`、`@tmp`、`@swap`
 
-如果新主机沿用现有布局，通常只需重新确认：
+如果新主机沿用现有布局，通常只需在清单条目里重新确认：
 
 - `diskDevice`
 - `swapSizeGb`

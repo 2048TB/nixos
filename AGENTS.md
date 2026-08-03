@@ -9,6 +9,7 @@
 主题入口：
 
 - `docs/README.md`
+- `docs/GETTING-STARTED.md`
 - `docs/ENV-USAGE.md`
 - `docs/NIX-COMMANDS.md`
 - `docs/KEYBINDINGS.md`

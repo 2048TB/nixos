@@ -8,10 +8,11 @@
 |------|------|
 | `README.md` | 仓库根入口与最短提示 |
 | 本文档 | 权威手册：流程、脚本行为、约束、FAQ |
+| `docs/GETTING-STARTED.md` | 新手上手指南：仓库怎么读、怎么改、怎么加机器 |
 | `docs/NIX-COMMANDS.md` | 纯命令速查 |
 | `docs/ENV-USAGE.md` | 环境差异 |
 | `docs/KEYBINDINGS.md` | 快捷键摘要 |
-| `nix/hosts/README.md` | hosts 目录、registry 与结构入口 |
+| `nix/hosts/README.md` | hosts 目录、主机清单与结构入口 |
 | `nix/home/README.md` | Home Manager 结构入口 |
 | `secrets/keys/README.md` | 公钥目录与 key 操作入口 |
 | `AGENTS.md` / `CLAUDE.md` | 代理规则与文档同步要求 |
@@ -27,7 +28,6 @@
 - `nix/scripts/admin/sops.sh`
 - `nix/scripts/admin/guard-secrets.sh`
 - `nix/scripts/admin/check-format-sanity.sh`
-- `nix/scripts/admin/host-meta-schema-sync.sh`
 - `nix/scripts/admin/common.sh`
 
 常用 update / switch / upgrade / clean 入口通过 `just` 暴露，检查以本地命令为准。
@@ -48,9 +48,9 @@ GitHub workflow 执行轻量 `self-check` 与 secrets guard，仍不能替代本
 - 显式传入的 `--repo` / `NIXOS_CONFIG_REPO` 若无效，脚本会直接失败，不会静默回退
 - read-only `eval` / `show` / `build` 优先通过 filtered flake repo，避免直接触碰不可读的 `.keys/main.agekey`
 - `sops.sh` 与 `guard-secrets.sh` 可以从仓库外直接调用
-- 已安装 NixOS host 的默认 repo 路径仍是 `/persistent/nixos-config`；需要不同磁盘布局时，在对应 `nix/hosts/nixos/<host>/vars.nix` 设置 `configRepoPath`
+- 已安装 NixOS host 的默认 repo 路径仍是 `/persistent/nixos-config`；需要不同磁盘布局时，在 `nix/hosts/default.nix` 对应主机条目里设置 `configRepoPath`
 - `/bin/bash` 兼容链接由 `systemd.tmpfiles.rules` 声明为 `/run/current-system/sw/bin/bash`，不再通过 activation script 命令式创建
-- `nix/hosts/registry/systems.toml` 是 host metadata 的事实源
+- `nix/hosts/default.nix` 是主机清单与 host metadata 的唯一事实源
 - `displays` metadata 是 monitor topology 的事实源；不要再在别处重复手写 connector facts
 - Noctalia GUI 配置写入 `~/.local/state/noctalia/config`；Home Manager 会从 `nix/home/configs/noctalia/` 首次 seed 缺失文件，后续 GUI 改动不会写回 tracked config；需要把 GUI 结果变成共享默认值时，显式复制 runtime config 回 `nix/home/configs/noctalia/` 后再提交
 - Home Manager 当前会把 `~/.local/share/mise/shims` 放进 session `PATH`；`code` / `antigravity` 还会额外通过 `~/.local/bin/` wrapper 过滤已知 Electron/Chromium 参数告警；`mise upgrade` 默认手动执行，只有主机显式设置 `my.host.miseAutoUpgrade = true` 时才启用 `systemd --user` timer
@@ -204,8 +204,8 @@ just host=zly upgrade
 - `upgrade` 现在会保留外层 `repo={{repo}}`，先在指定 repo 上更新 Linux NixOS 相关 inputs，再执行 `switch`
 - 需要 `build` / `boot` / `test` / Home Manager switch 时，直接用 `nh` 或 `nix` 命令；这些不再作为公开 `just` 入口
 - `format-sanity` 是 flake check 中的轻量格式/解析防回归检查，对应 `nix/scripts/admin/check-format-sanity.sh`；shell shebang、YAML/JSON 解析、Markdown trailing whitespace、`justfile` 解析和疑似 Nix 注释吞代码都会失败
-- `self-check` 会检查 `justfile`、admin/hook shell 语法、可用时的 `shellcheck` / `shfmt -d`、YAML/JSON 解析、Markdown trailing whitespace、格式 sanity 和 registry schema
-- `validate-local` 会先执行 `self-check`，再串行执行 secrets 全量巡检、registry metadata 同步检查和 `nix flake check --all-systems --no-build`
+- `self-check` 会检查 `justfile`、admin/hook shell 语法、可用时的 `shellcheck` / `shfmt -d`、YAML/JSON 解析、Markdown trailing whitespace 和格式 sanity
+- `validate-local` 会先执行 `self-check`，再串行执行 secrets 全量巡检和 `nix flake check --all-systems --no-build`（主机清单字段校验包含在 flake check 的模块断言与 eval checks 中）
 
 清理相关：
 
@@ -278,8 +278,9 @@ bash nix/scripts/admin/sops.sh password-set '<sha512-hash>'
 
 ## 8. Host Metadata 与桌面约束
 
-- host metadata 事实源：`nix/hosts/registry/systems.toml`
+- host metadata 事实源：`nix/hosts/default.nix`（主机清单，每台主机一个条目）
 - 常见字段：`system`、`kind`、`formFactor`、`desktopSession`、`desktopProfile`、`tags`、`gpuVendors`、`displays`
+- 字段取值由 `nix/modules/core/options.nix`（`types.enum`）与 `assertions.nix` 校验，写错会在 `nix flake check` / rebuild 时报错
 - `roles` 是功能开关；不要重新引入旧 `profiles` 模型
 - `tags` 只保留无法稳定派生的事实；`multi-monitor` / `hidpi` 不再手写
 - `displays.primary` 现在必须是 `bool`

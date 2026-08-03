@@ -5,7 +5,7 @@
 ## 通用约定
 
 - 已安装系统上的推荐 repo 路径：`/persistent/nixos-config`
-- NixOS host 可在 `nix/hosts/nixos/<host>/vars.nix` 用 `configRepoPath = "...";` 覆盖运行时 repo 路径
+- NixOS host 可在 `nix/hosts/default.nix` 对应主机条目里用 `configRepoPath = "...";` 覆盖运行时 repo 路径
 - Live ISO / 临时环境可在任意可写 checkout 中工作
 - 只读 flake 操作优先走 filtered repo
 
