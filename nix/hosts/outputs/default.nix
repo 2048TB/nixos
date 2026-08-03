@@ -12,10 +12,6 @@ let
     inputs
     // {
       inherit mylib mytheme;
-      pkgsCherryStudio = import inputs.nixpkgs-cherry-studio {
-        inherit system;
-        config.allowUnfreePredicate = mylib.allowUnfreePredicate;
-      };
       pkgsUnstable = import inputs.nixpkgs-unstable {
         inherit system;
         config.allowUnfreePredicate = mylib.allowUnfreePredicate;
