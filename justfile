@@ -24,19 +24,6 @@ _flake-check:
 _guard-secrets-all:
     @NIXOS_CONFIG_REPO="{{repo}}" bash "{{script_repo}}/nix/scripts/admin/guard-secrets.sh" --all-tracked
 
-[private]
-_registry-schema-check:
-    @repo_root="$(bash "{{script_repo}}/nix/scripts/admin/print-flake-repo.sh" "{{repo}}")" && \
-    if command -v check-jsonschema >/dev/null 2>&1; then \
-      check-jsonschema --schemafile "$repo_root/nix/hosts/registry/systems.schema.json" "$repo_root/nix/hosts/registry/systems.toml"; \
-    else \
-      {{nix_cmd}} shell nixpkgs#check-jsonschema -c check-jsonschema --schemafile "$repo_root/nix/hosts/registry/systems.schema.json" "$repo_root/nix/hosts/registry/systems.toml"; \
-    fi
-
-[private]
-_registry-meta-sync-check:
-    @NIXOS_CONFIG_REPO="{{repo}}" bash "{{script_repo}}/nix/scripts/admin/host-meta-schema-sync.sh"
-
 # ========== 日常入口 ==========
 
 update:
@@ -65,11 +52,8 @@ self-check:
     @if command -v shfmt >/dev/null 2>&1; then shfmt -i 2 -d "{{script_repo}}"/nix/scripts/admin/*.sh "{{script_repo}}"/.githooks/pre-commit; else echo "warning: shfmt not found; skipping shfmt" >&2; fi
     @echo ">>> format sanity"
     @NIXOS_CONFIG_REPO="{{repo}}" bash "{{script_repo}}/nix/scripts/admin/check-format-sanity.sh" --repo "{{repo}}"
-    @echo ">>> registry schema"
-    @if command -v check-jsonschema >/dev/null 2>&1 || command -v nix >/dev/null 2>&1; then just repo="{{repo}}" _registry-schema-check; else echo "warning: registry schema check dependencies not found; skipping" >&2; fi
 
 validate-local:
     @just repo="{{repo}}" self-check
     @just repo="{{repo}}" _guard-secrets-all
-    @just repo="{{repo}}" _registry-meta-sync-check
     @just repo="{{repo}}" _flake-check

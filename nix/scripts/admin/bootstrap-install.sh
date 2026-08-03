@@ -119,10 +119,11 @@ if ! git -C "$repo" rev-parse --show-toplevel >/dev/null 2>&1; then
     "请用 git clone 得到仓库，再在仓库目录内运行本脚本。"
 fi
 
-# 2. 主机注册检查：host 必须在 vars.nix 存在。
-if [ ! -f "$repo/nix/hosts/nixos/$host/vars.nix" ]; then
-  fail_with_hint "未找到主机 '$host' 的配置：nix/hosts/nixos/$host/vars.nix" \
-    "可用主机：$(find "$repo/nix/hosts/nixos" -maxdepth 1 -mindepth 1 -type d ! -name '_*' -printf '%f ' 2>/dev/null)"
+# 2. 主机存在性检查：host 目录必须有 hardware.nix（清单条目由 nix flake 侧校验）。
+if [ ! -f "$repo/nix/hosts/nixos/$host/hardware.nix" ]; then
+  fail_with_hint "未找到主机 '$host' 的配置：nix/hosts/nixos/$host/hardware.nix" \
+    "可用主机：$(find "$repo/nix/hosts/nixos" -maxdepth 1 -mindepth 1 -type d ! -name '_*' -printf '%f ' 2>/dev/null)" \
+    "新主机需先在 nix/hosts/default.nix 清单登记，并创建 nix/hosts/nixos/$host/ 目录。"
 fi
 
 # 3. sops main.agekey：能找到就用；找不到则在确认后生成新 key 并重建 secret。

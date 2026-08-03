@@ -1,28 +1,19 @@
 { lib, mylib, inputs, system, ... }@args:
 let
   common = import ../common.nix { inherit lib mylib; };
-  hostsRoot = mylib.relativeToRoot "nix/hosts/darwin";
-  registryState = common.mkRegistryState {
-    kind = "darwin";
-    inherit hostsRoot system;
-    requiredFiles = [
-      "default.nix"
-      "vars.nix"
-    ];
-  };
-  inherit (registryState) hostNames;
+  # 主机来源 = 清单（nix/hosts/default.nix）中 system 匹配的条目。
+  platformHosts = lib.filterAttrs (_: host: (host.system or "") == system) mylib.hosts.darwin;
+  hostNames = builtins.attrNames platformHosts;
 
   mkHostData =
     name:
     let
       hostDir = "nix/hosts/darwin/${name}";
       hostPath = mylib.relativeToRoot "${hostDir}/default.nix";
-      hostVarsPath = mylib.relativeToRoot "${hostDir}/vars.nix";
       hostChecksPath = mylib.relativeToRoot "${hostDir}/checks.nix";
-      hostMyvars = import hostVarsPath;
-      hostRegistry = mylib.hostRegistryEntry "darwin" name;
+      hostMyvars = platformHosts.${name};
       hostCtx = mylib.mkDarwinHost (args // {
-        inherit name hostPath hostMyvars hostRegistry;
+        inherit name hostPath hostMyvars;
       });
       hostChecks = mylib.importIfExists hostChecksPath (hostCtx // { inherit (args) lib mylib; });
     in
@@ -36,7 +27,7 @@ let
     inherit hostNames mkHostData;
     configAttrName = "darwinConfigurations";
   };
-  inherit (hostData) data dataWithoutPaths mainUsers resolvedHostNames;
+  inherit (hostData) dataWithoutPaths mainUsers resolvedHostNames;
   darwinConfigurations = hostData.configurations;
   homeConfigurations = common.mkHomeConfigurations {
     configurations = darwinConfigurations;
@@ -56,17 +47,7 @@ let
   evalCheckSpecs = common.mkEvalCheckSpecs "darwin-" hostEvalTests;
   evalTestChecks.${system} = mylib.specsToAttrs evalCheckSpecs mkEvalCheck;
 in
-assert common.assertRegistryState
 {
-  state = registryState;
-  registryKey = "darwin";
-  kindDisplay = "Darwin";
-  hostsPath = "nix/hosts/darwin";
-  inherit system;
-};
-{
-  inherit data;
-  registeredHosts = resolvedHostNames;
   inherit darwinConfigurations homeConfigurations;
   apps = { };
   checks = mylib.mergeAttrFromListWithExtra "checks" dataWithoutPaths [ evalTestChecks ];

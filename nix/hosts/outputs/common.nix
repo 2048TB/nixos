@@ -2,8 +2,8 @@
 rec {
   # Assemble the per-host data map and the merged config views shared by every
   # platform builder. configAttrName is "nixosConfigurations" or
-  # "darwinConfigurations"; the result exposes both the raw data (for later
-  # mergeAttrFromListWithExtra calls) and the resolved config/user/host views.
+  # "darwinConfigurations"; the result exposes the raw per-host entries (for
+  # later mergeAttrFromListWithExtra calls) and the resolved config/user views.
   collectHostData =
     { hostNames
     , mkHostData
@@ -17,61 +17,8 @@ rec {
       resolvedHostNames = builtins.attrNames configurations;
     in
     {
-      inherit data dataWithoutPaths configurations mainUsers resolvedHostNames;
+      inherit dataWithoutPaths configurations mainUsers resolvedHostNames;
     };
-
-  mkRegistryState =
-    { kind
-    , hostsRoot
-    , requiredFiles
-    , system
-    }:
-    let
-      discoveredHostNames = mylib.discoverHostNamesBy hostsRoot requiredFiles;
-      hostNames = mylib.registryHostNamesByKind kind;
-      missingInRegistry =
-        builtins.filter (name: !(builtins.elem name hostNames)) discoveredHostNames;
-      missingOnDisk =
-        builtins.filter (name: !(builtins.elem name discoveredHostNames)) hostNames;
-      wrongSystemHosts =
-        builtins.filter
-          (name: ((mylib.hostRegistryEntry kind name).system or "") != system)
-          hostNames;
-      hostNamePattern = "^[A-Za-z0-9][A-Za-z0-9_-]*$";
-      invalidHostNames = mylib.namesNotMatching hostNamePattern hostNames;
-    in
-    {
-      inherit
-        discoveredHostNames
-        hostNames
-        missingInRegistry
-        missingOnDisk
-        wrongSystemHosts
-        hostNamePattern
-        invalidHostNames
-        ;
-    };
-
-  assertRegistryState =
-    { state
-    , registryKey
-    , kindDisplay
-    , hostsPath
-    , system
-    }:
-    lib.assertMsg
-      (state.invalidHostNames == [ ])
-      "Invalid ${kindDisplay} host names under ${hostsPath}: ${lib.concatStringsSep ", " state.invalidHostNames}. Allowed pattern: ${state.hostNamePattern}"
-    && lib.assertMsg
-      (state.missingInRegistry == [ ])
-      "Host directories exist but are not registered in nix/hosts/registry/systems.toml[${registryKey}]: ${lib.concatStringsSep ", " state.missingInRegistry}"
-    && lib.assertMsg
-      (state.missingOnDisk == [ ])
-      "Hosts are registered in nix/hosts/registry/systems.toml[${registryKey}] but required files are missing: ${lib.concatStringsSep ", " state.missingOnDisk}"
-    && lib.assertMsg
-      (state.wrongSystemHosts == [ ])
-      "Hosts registered under ${registryKey} with mismatched system (${system} expected): ${lib.concatStringsSep ", " state.wrongSystemHosts}"
-    && lib.assertMsg (state.hostNames != [ ]) "No hosts found under ${hostsPath}";
 
   mkEvalCheck =
     pkgs:

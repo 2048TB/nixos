@@ -1,5 +1,81 @@
+# 主机元数据模式（允许值、默认值）+ role / 能力派生。
+# 清单条目（nix/hosts/default.nix）里的字段最终由 modules/core/options.nix
+# 按这里的 allowed* 列表做 types.enum 校验。
 _:
 rec {
+  hostMetaSchema = {
+    defaultRoles = [ ];
+    defaultDockerMode = "rootless";
+    defaultConfigRepoPath = "/persistent/nixos-config";
+    defaultAria2RpcSecretPath = "/run/secrets/services/aria2-rpc";
+
+    allowedGpuModes = [
+      "none"
+      "amdgpu"
+      "nvidia"
+      "modesetting"
+      "amd-nvidia-hybrid"
+    ];
+
+    allowedDockerModes = [
+      "rootless"
+      "rootful"
+    ];
+
+    allowedKinds = [
+      "workstation"
+      "server"
+      "vm"
+    ];
+
+    allowedFormFactors = [
+      "desktop"
+      "laptop"
+      "handheld"
+      "headless"
+    ];
+
+    allowedGpuVendors = [
+      "amd"
+      "intel"
+      "nvidia"
+    ];
+
+    allowedDesktopProfiles = [
+      "none"
+      "niri"
+      "aqua"
+    ];
+
+    allowedHostTags = [
+      "fingerprint-reader"
+      "docked"
+    ];
+
+    knownHostRoles = [
+      "gaming"
+      "vpn"
+      "virt"
+      "container"
+    ];
+  };
+
+  roleFlags = host:
+    let
+      hostRoles = host.roles or hostMetaSchema.defaultRoles;
+      hasRole = role: builtins.elem role hostRoles;
+      dockerMode = host.dockerMode or hostMetaSchema.defaultDockerMode;
+    in
+    {
+      inherit hostRoles hasRole dockerMode;
+      enableMullvadVpn = hasRole "vpn";
+      enableLibvirtd = hasRole "virt";
+      enableDocker = hasRole "container";
+      enableSteam = hasRole "gaming";
+      useRootfulDocker = dockerMode == "rootful";
+      useRootlessDocker = dockerMode == "rootless";
+    };
+
   deriveHostCapabilities =
     host:
     let

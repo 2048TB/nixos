@@ -1,6 +1,5 @@
-{ lib
-, hostRegistryLib ? import ./host-registry.nix { inherit lib; }
-}:
+# 把清单条目（nix/hosts/default.nix）+ 主机目录组装成一个 darwinSystem。
+{ lib }:
 { inputs
 , mylib
 , genSpecialArgs
@@ -8,22 +7,20 @@
 , name
 , hostPath ? null
 , hostMyvars ? { }
-, hostRegistry ? { }
 , extraModules ? [ ]
 , homeModules ? [ (mylib.relativeToRoot "nix/home/darwin") ]
 , ...
 }:
 let
+  inherit (inputs) nix-darwin nixpkgs-darwin home-manager;
+
+  manifestLabel = "nix/hosts/default.nix[darwin.${name}]";
   hostDir = "nix/hosts/darwin/${name}";
-  registryPath = "nix/hosts/registry/systems.toml";
-  registryState = hostRegistryLib.mkRegistryState {
-    inherit hostRegistry hostMyvars;
-  };
   hostHomePath = mylib.relativeToRoot "${hostDir}/home.nix";
   resolvedHomeModules = homeModules ++ lib.optionals (builtins.pathExists hostHomePath) [ hostHomePath ];
 
   baseSpecialArgs = genSpecialArgs system;
-  resolvedMyvars = hostMyvars // hostRegistry // { hostname = name; };
+  resolvedMyvars = hostMyvars // { hostname = name; };
   mainUser = resolvedMyvars.username;
   hasNixHomebrew = builtins.hasAttr "nix-homebrew" inputs;
   nixHomebrewTaps =
@@ -60,37 +57,67 @@ let
     inherit mainUser;
   };
 
-  darwinSystem = mylib.macosSystem {
-    inherit inputs system mainUser specialArgs;
+  darwinSystem = nix-darwin.lib.darwinSystem {
+    inherit system specialArgs;
     modules =
       darwinBootstrapModules
       ++ [ (mylib.relativeToRoot "nix/modules/darwin") ]
       ++ lib.optionals (hostPath != null) [ hostPath ]
-      ++ extraModules;
-    homeModules = resolvedHomeModules;
+      ++ extraModules
+      ++ [
+        (
+          _:
+          {
+            nixpkgs.pkgs = import nixpkgs-darwin {
+              inherit system;
+              config.allowUnfreePredicate = mylib.allowUnfreePredicate;
+            };
+          }
+        )
+        {
+          # home-manager's nix-darwin bridge resolves home.homeDirectory from
+          # users.users.<name>.home; ensure it is defined.
+          users.users.${mainUser}.home = lib.mkDefault "/Users/${mainUser}";
+        }
+      ]
+      ++ lib.optionals (resolvedHomeModules != [ ]) [
+        home-manager.darwinModules.home-manager
+        {
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            backupFileExtension = "bak";
+            extraSpecialArgs = specialArgs;
+            users.${mainUser} = {
+              imports = resolvedHomeModules;
+              # Keep Darwin HM user attrs defined at the assembly layer to avoid
+              # null defaults leaking into eval-time checks.
+              home = {
+                username = lib.mkDefault mainUser;
+                homeDirectory = lib.mkDefault "/Users/${mainUser}";
+                stateVersion = lib.mkDefault (
+                  resolvedMyvars.homeStateVersion or mylib.defaultHomeStateVersion
+                );
+              };
+            };
+          };
+        }
+      ];
   };
 
-  pkgs = import inputs.nixpkgs-darwin {
+  pkgs = import nixpkgs-darwin {
     inherit system;
     config.allowUnfreePredicate = mylib.allowUnfreePredicate;
   };
 in
-assert hostRegistryLib.assertCommonRegistry
-{
-  inherit hostDir;
-  inherit registryPath;
-  hostName = "darwin.${name}";
-  state = registryState;
-};
-assert mylib.assertRequiredNonEmptyStrings hostRegistry [
-  "system"
-] "${registryPath}[darwin.${name}]";
-assert mylib.assertNonEmptyAttrs hostMyvars "Missing or empty nix/hosts/darwin/${name}/vars.nix";
+assert mylib.assertNonEmptyAttrs hostMyvars "Missing or empty manifest entry ${manifestLabel}";
 assert mylib.assertRequiredNonEmptyStrings hostMyvars [
+  "system"
   "username"
-  "homeStateVersion"
   "timezone"
-] "nix/hosts/darwin/${name}/vars.nix";
+  "homeStateVersion"
+]
+  manifestLabel;
 {
   inherit
     name

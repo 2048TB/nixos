@@ -28,7 +28,7 @@ in
       }
       // lib.optionalAttrs rawRoleFlags.enableSteam {
         # platformOptimizations 的 option 来自按 gaming role 导入的 nix-gaming module。
-        # 这里用 vars.nix 的原始 role 做静态 gating，避免非 gaming host 产生不存在的 option。
+        # 这里用主机清单的原始 role 做静态 gating，避免非 gaming host 产生不存在的 option。
         platformOptimizations.enable = true;
       };
 

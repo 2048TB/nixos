@@ -12,10 +12,6 @@ rec {
     && builtins.isInt attrs.${key}
     && attrs.${key} > 0;
 
-  namesNotMatching =
-    pattern: names:
-    builtins.filter (name: builtins.match pattern name == null) names;
-
   mapNamesToAttrs =
     names: mkValue:
     builtins.listToAttrs (
@@ -64,17 +60,4 @@ rec {
         })
         specs
     );
-
-  discoverHostNamesBy =
-    hostsRoot: requiredFiles:
-    let
-      hostsDir = builtins.readDir hostsRoot;
-    in
-    builtins.filter
-      (
-        name:
-        hostsDir.${name} == "directory"
-        && builtins.all (file: builtins.pathExists (hostsRoot + "/${name}/${file}")) requiredFiles
-      )
-      (builtins.attrNames hostsDir);
 }

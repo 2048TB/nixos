@@ -1,6 +1,7 @@
-{ lib
-, hostRegistryLib ? import ./host-registry.nix { inherit lib; }
-}:
+# 把清单条目（nix/hosts/default.nix）+ 主机目录组装成一个 nixosSystem。
+# 元数据字段的取值校验在模块层（modules/core/options.nix + assertions.nix）；
+# 这里只断言「目录结构完整」与「身份字段存在」这类组装前提。
+{ lib }:
 { inputs
 , mylib
 , genSpecialArgs
@@ -8,7 +9,6 @@
 , name
 , hostPath ? null
 , hostMyvars ? { }
-, hostRegistry ? { }
 , extraModules ? [ ]
 , homeModules ? [ (mylib.relativeToRoot "nix/home/linux") ]
 , nixpkgsOverlays ? [ ]
@@ -24,11 +24,11 @@ let
     nix-gaming
     disko
     sops-nix
+    home-manager
     ;
 
-  baseSpecialArgs = genSpecialArgs system;
+  manifestLabel = "nix/hosts/default.nix[nixos.${name}]";
   hostDir = "nix/hosts/nixos/${name}";
-  registryPath = "nix/hosts/registry/systems.toml";
   hostDefaultPath = mylib.relativeToRoot "${hostDir}/default.nix";
   hostEntryPath =
     if hostPath != null then
@@ -43,14 +43,6 @@ let
   hostHomePath = mylib.relativeToRoot "${hostDir}/home.nix";
   hostHardwareModuleNames = import hostHardwareModulesPath;
   cpuVendor = mylib.cpuVendorFromHardwareModules hostHardwareModuleNames;
-  derivedGpuMode = mylib.gpuModeFromHardwareModules hostHardwareModuleNames;
-  resolvedGpuMode = hostMyvars.gpuMode or derivedGpuMode;
-  registryState = hostRegistryLib.mkRegistryState {
-    inherit hostRegistry;
-    hostMyvars = hostMyvars // {
-      gpuMode = resolvedGpuMode;
-    };
-  };
   hostHardwareModules =
     map
       (moduleName:
@@ -59,16 +51,16 @@ let
       )
       hostHardwareModuleNames;
 
-  resolvedMyvars = hostMyvars // hostRegistry // {
+  resolvedMyvars = hostMyvars // {
     hostname = name;
-    gpuMode = resolvedGpuMode;
   };
   roleFlags = mylib.roleFlags resolvedMyvars;
-  hasDesktopSession = registryState.desktopSession;
+  hasDesktopSession = resolvedMyvars.desktopSession or false;
   secureBootCfg = resolvedMyvars.secureBoot or { };
   enableSecureBoot = secureBootCfg.enable or false;
   mainUser = resolvedMyvars.username;
 
+  baseSpecialArgs = genSpecialArgs system;
   specialArgs = baseSpecialArgs // {
     myvars = resolvedMyvars;
     inherit mainUser cpuVendor;
@@ -102,7 +94,7 @@ let
     nix-gaming.nixosModules.platformOptimizations
   ]
   ++ lib.optionals enableSecureBoot [
-    # Import lanzaboote only for hosts that explicitly opt in via vars.nix.
+    # Import lanzaboote only for hosts that explicitly opt in via the manifest.
     lanzaboote.nixosModules.lanzaboote
   ]
   ++ lib.optionals (hostEntryPath != null) [ hostEntryPath ]
@@ -113,10 +105,22 @@ let
   ++ hostHardwareModules
   ++ extraModules;
 
-  nixosSystem = mylib.nixosSystem {
-    inherit inputs system specialArgs mainUser;
-    modules = hostModules;
-    homeModules = resolvedHomeModules;
+  nixosSystem = nixpkgs.lib.nixosSystem {
+    inherit system specialArgs;
+    modules =
+      hostModules
+      ++ lib.optionals (resolvedHomeModules != [ ]) [
+        home-manager.nixosModules.home-manager
+        {
+          home-manager = {
+            useGlobalPkgs = true;
+            useUserPackages = true;
+            backupFileExtension = "bak";
+            extraSpecialArgs = specialArgs;
+            users.${mainUser}.imports = resolvedHomeModules;
+          };
+        }
+      ];
   };
 
   pkgs = import nixpkgs {
@@ -125,28 +129,20 @@ let
     overlays = nixpkgsOverlays;
   };
 in
-assert hostRegistryLib.assertCommonRegistry
-{
-  inherit hostDir;
-  inherit registryPath;
-  hostName = "nixos.${name}";
-  state = registryState;
-};
-assert mylib.assertRequiredNonEmptyStrings hostRegistry [
-  "system"
-] "${registryPath}[nixos.${name}]";
-assert mylib.assertPathExists hostHardwarePath "Missing ${hostDir}/hardware.nix";
-assert mylib.assertPathExists hostHardwareModulesPath "Missing ${hostDir}/hardware-modules.nix";
-assert mylib.assertPathExists hostDiskoPath "Missing ${hostDir}/disko.nix";
-assert mylib.assertNonEmptyAttrs hostMyvars "Missing or empty ${hostDir}/vars.nix";
+assert mylib.assertNonEmptyAttrs hostMyvars "Missing or empty manifest entry ${manifestLabel}";
 assert mylib.assertRequiredNonEmptyStrings hostMyvars [
+  "system"
   "username"
   "timezone"
   "systemStateVersion"
   "homeStateVersion"
   "diskDevice"
-] "${hostDir}/vars.nix";
-assert mylib.assertRequiredPositiveInts hostMyvars [ "swapSizeGb" ] "${hostDir}/vars.nix";
+]
+  manifestLabel;
+assert mylib.assertRequiredPositiveInts hostMyvars [ "swapSizeGb" ] manifestLabel;
+assert mylib.assertPathExists hostHardwarePath "Missing ${hostDir}/hardware.nix";
+assert mylib.assertPathExists hostHardwareModulesPath "Missing ${hostDir}/hardware-modules.nix";
+assert mylib.assertPathExists hostDiskoPath "Missing ${hostDir}/disko.nix";
 {
   inherit
     name

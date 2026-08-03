@@ -1,31 +1,20 @@
 { lib, mylib, inputs, system, ... }@args:
 let
   common = import ../common.nix { inherit lib mylib; };
-  hostsRoot = mylib.relativeToRoot "nix/hosts/nixos";
-  registryState = common.mkRegistryState {
-    kind = "nixos";
-    inherit hostsRoot system;
-    requiredFiles = [
-      "hardware.nix"
-      "hardware-modules.nix"
-      "disko.nix"
-      "vars.nix"
-    ];
-  };
-  inherit (registryState) hostNames;
+  # 主机来源 = 清单（nix/hosts/default.nix）中 system 匹配的条目。
+  platformHosts = lib.filterAttrs (_: host: (host.system or "") == system) mylib.hosts.nixos;
+  hostNames = builtins.attrNames platformHosts;
 
   mkHostData =
     name:
     let
       hostDir = "nix/hosts/nixos/${name}";
-      hostVarsPath = mylib.relativeToRoot "${hostDir}/vars.nix";
       hostChecksPath = mylib.relativeToRoot "${hostDir}/checks.nix";
       sharedChecksPath = mylib.relativeToRoot "nix/hosts/nixos/_shared/checks.nix";
       generatedDesktopChecksPath = mylib.relativeToRoot "nix/hosts/nixos/_shared/generated-desktop-checks.nix";
-      hostMyvars = import hostVarsPath;
-      hostRegistry = mylib.hostRegistryEntry "nixos" name;
+      hostMyvars = platformHosts.${name};
       hostCtx = mylib.mkNixosHost (args // {
-        inherit name hostMyvars hostRegistry;
+        inherit name hostMyvars;
       });
       hostCheckArgs = hostCtx // { inherit (args) lib mylib; };
       hostChecks =
@@ -43,7 +32,7 @@ let
     inherit hostNames mkHostData;
     configAttrName = "nixosConfigurations";
   };
-  inherit (hostData) data dataWithoutPaths mainUsers resolvedHostNames;
+  inherit (hostData) dataWithoutPaths mainUsers resolvedHostNames;
   nixosConfigurations = hostData.configurations;
   homeConfigurations = common.mkHomeConfigurations {
     configurations = nixosConfigurations;
@@ -67,7 +56,7 @@ let
     config.allowUnfreePredicate = mylib.allowUnfreePredicate;
   };
 
-  extraEvalTests = import ../eval-tests.nix { inherit lib mylib common args; };
+  extraEvalTests = import ../eval-tests.nix { inherit lib mylib args; };
   lintChecks = import ../lint-checks.nix { inherit inputs system pkgs mylib; };
   mlShell = import ../ml-shell.nix { inherit inputs system mylib; };
 
@@ -83,7 +72,6 @@ let
       packages = with pkgs; [
         nix-tree
         just
-        check-jsonschema
         shellcheck
         shfmt
         nixpkgs-fmt
@@ -109,17 +97,7 @@ let
 
   platformFormatter.${system} = pkgs.nixpkgs-fmt;
 in
-assert common.assertRegistryState
 {
-  state = registryState;
-  registryKey = "nixos";
-  kindDisplay = "NixOS";
-  hostsPath = "nix/hosts/nixos";
-  inherit system;
-};
-{
-  inherit data;
-  registeredHosts = resolvedHostNames;
   inherit nixosConfigurations homeConfigurations;
   apps = { };
   checks = mylib.mergeAttrFromListWithExtra "checks" dataWithoutPaths [

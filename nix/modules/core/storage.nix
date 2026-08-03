@@ -40,7 +40,7 @@ let
         *)
           if [ "$actual_resume_offset" != "$configured_resume_offset" ]; then
             echo "ERROR: my.host.resumeOffset ($configured_resume_offset) != actual swapfile resume offset ($actual_resume_offset) on host ${hostCfg.hostname}." >&2
-            echo "ERROR: update hosts/nixos/${hostCfg.hostname}/vars.nix: resumeOffset = $actual_resume_offset;" >&2
+            echo "ERROR: update nix/hosts/default.nix (nixos.${hostCfg.hostname}): resumeOffset = $actual_resume_offset;" >&2
             status=1
           fi
           ;;

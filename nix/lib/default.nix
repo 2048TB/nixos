@@ -1,101 +1,9 @@
 { lib }:
 let
-  nixosSystem =
-    { inputs
-    , system
-    , specialArgs
-    , modules
-    , mainUser
-    , homeModules ? [ ]
-    , ...
-    }:
-    let
-      inherit (inputs) nixpkgs home-manager;
-    in
-    nixpkgs.lib.nixosSystem {
-      inherit system specialArgs;
-      modules =
-        modules
-        ++ lib.optionals (homeModules != [ ]) [
-          home-manager.nixosModules.home-manager
-          {
-            home-manager = {
-              useGlobalPkgs = true;
-              useUserPackages = true;
-              backupFileExtension = "bak";
-              extraSpecialArgs = specialArgs;
-              users.${mainUser}.imports = homeModules;
-            };
-          }
-        ];
-    };
-
-  macosSystem =
-    { inputs
-    , system
-    , specialArgs
-    , modules
-    , mainUser
-    , homeModules ? [ ]
-    , ...
-    }:
-    let
-      inherit (inputs) nix-darwin nixpkgs-darwin home-manager;
-    in
-    nix-darwin.lib.darwinSystem {
-      inherit system specialArgs;
-      modules =
-        modules
-        ++ [
-          (
-            _:
-            {
-              nixpkgs.pkgs = import nixpkgs-darwin {
-                inherit system;
-                config.allowUnfreePredicate = specialArgs.mylib.allowUnfreePredicate;
-              };
-            }
-          )
-          {
-            # home-manager's nix-darwin bridge resolves home.homeDirectory from
-            # users.users.<name>.home; ensure it is defined.
-            users.users.${mainUser}.home = lib.mkDefault "/Users/${mainUser}";
-          }
-        ]
-        ++ lib.optionals (homeModules != [ ]) [
-          home-manager.darwinModules.home-manager
-          {
-            home-manager = {
-              useGlobalPkgs = true;
-              useUserPackages = true;
-              backupFileExtension = "bak";
-              extraSpecialArgs = specialArgs;
-              users.${mainUser} = {
-                imports = homeModules;
-                # Keep Darwin HM user attrs defined at the assembly layer to avoid
-                # null defaults leaking into eval-time checks.
-                home = {
-                  username = lib.mkDefault mainUser;
-                  homeDirectory = lib.mkDefault "/Users/${mainUser}";
-                  stateVersion = lib.mkDefault (
-                    specialArgs.myvars.homeStateVersion or defaultHomeStateVersion
-                  );
-                };
-              };
-            };
-          }
-        ];
-    };
-
   attrsLib = import ./attrs.nix { inherit lib; };
-  hostMetaLib = import ./host-meta.nix { };
-  hostRegistryLib = import ./host-registry.nix {
-    inherit lib;
-    inherit (hostMetaLib) hostMetaSchema;
-  };
-  mkNixosHost = import ./mkNixosHost.nix { inherit lib hostRegistryLib; };
-  mkDarwinHost = import ./mkDarwinHost.nix { inherit lib hostRegistryLib; };
-  hostCapabilitiesLib = import ./host-capabilities.nix { };
+  hostLib = import ./host.nix { };
+  mkNixosHost = import ./mkNixosHost.nix { inherit lib; };
+  mkDarwinHost = import ./mkDarwinHost.nix { inherit lib; };
   displayTopologyLib = import ./display-topology.nix { inherit lib; };
   launchersLib = import ./launchers.nix { inherit lib; };
   validationLib = import ./validation.nix { inherit lib attrsLib; };
@@ -110,14 +18,15 @@ let
   ];
 in
 rec {
-  inherit nixosSystem macosSystem;
+  # 全仓库唯一主机清单；条目结构见 nix/hosts/default.nix 顶部注释。
+  hosts = import ../hosts;
+
   inherit mkNixosHost mkDarwinHost;
-  inherit (hostCapabilitiesLib) deriveHostCapabilities;
+  inherit (hostLib) hostMetaSchema roleFlags deriveHostCapabilities;
   inherit (displayTopologyLib) primaryDisplay mkNiriOutputs mkNoctaliaMonitorWidgets;
   inherit (attrsLib)
     hasNonEmptyString
     hasPositiveInt
-    namesNotMatching
     mapNamesToAttrs
     mergeRecursiveAttrsList
     mergeAttrFromList
@@ -125,9 +34,7 @@ rec {
     importIfExists
     mkHostDataEntry
     specsToAttrs
-    discoverHostNamesBy
     ;
-  inherit (hostMetaLib) hostMetaSchema roleFlags;
   inherit (launchersLib) mkLogFilteredLauncher;
   inherit (validationLib)
     assertPathExists
@@ -215,24 +122,6 @@ rec {
   # Use paths relative to the repository root.
   relativeToRoot = lib.path.append ../../.;
 
-  hostRegistryPath = relativeToRoot "nix/hosts/registry/systems.toml";
-  hostRegistry =
-    if builtins.pathExists hostRegistryPath then
-      builtins.fromTOML (builtins.readFile hostRegistryPath)
-    else
-      {
-        nixos = { };
-        darwin = { };
-      };
-
-  registryHostsByKind = kind: hostRegistry.${kind} or { };
-
-  registryHostNamesByKind =
-    kind:
-    builtins.sort builtins.lessThan (builtins.attrNames (registryHostsByKind kind));
-
-  hostRegistryEntry = kind: name: (registryHostsByKind kind).${name} or { };
-
   kvmModulesForVendor = vendor:
     if vendor == "amd" then [ "kvm-amd" ]
     else if vendor == "intel" then [ "kvm-intel" ]
@@ -247,10 +136,6 @@ rec {
     if hasAmd && !hasIntel then "amd"
     else if hasIntel && !hasAmd then "intel"
     else null;
-
-  gpuModeFromHardwareModules =
-    moduleNames:
-    if builtins.elem "common-gpu-amd" moduleNames then "amdgpu" else "modesetting";
 
   mkNixosHardwareModule =
     { extraImports ? [ ]

@@ -100,12 +100,13 @@ primary_user_name() {
     return 0
   fi
 
+  # 主机清单里第一个 username（位于 nixosDefaults 共享默认值块）。
   awk -F'"' '
     /^[[:space:]]*username[[:space:]]*=/ {
       print $2
       exit
     }
-  ' "$repo_root/nix/hosts/nixos/_shared/vars-common.nix"
+  ' "$repo_root/nix/hosts/default.nix"
 }
 
 collect_age_recipients() {
