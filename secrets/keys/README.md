@@ -43,6 +43,8 @@ bash nix/scripts/admin/sops.sh rekey
 - `init --create`：创建新的 `main.agekey` 与 `main.age.pub`
 - `init --rotate`：生成新的 `main.agekey`，并保留旧 key 为 `.keys/main.agekey.pre-rotate.<timestamp>`
 - `reset`：丢失 key 的恢复入口；生成新的 `main` + `recovery` key，改写 `.sops.yaml` 锚点，提示输入新密码并重建密码/aria2 secret（旧 secret 永久作废）
+- `recovery-init [--force]`：创建或更新 `recovery.agekey` 与 `recovery.age.pub`
+- `reset` / `recovery-init --force`：目标 key 已存在时先移到 `<key>.pre-reset.<timestamp>` 再生成新 key，旧私钥不会被就地覆盖销毁
 - `rekey`：使用当前 key、recovery key 与 backup keys，把所有 secrets recipients 同步到最新集合
 - `install-live.sh`：安装时只接受“与 `main.age.pub` 匹配”的 private key
 

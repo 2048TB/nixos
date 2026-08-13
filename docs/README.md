@@ -141,6 +141,8 @@ bash nix/scripts/admin/install-live.sh --host zly --disk /dev/nvme0n1 --repo "$P
 ```
 
 - 用法：`install-live.sh --host <name> --disk <device> [--repo <path>] [--yes]`
+- `--disk` 必须与该主机在 `nix/hosts/default.nix` 里声明的 `diskDevice` 一致：真正被 `disko` 清空的是清单里的值，两者不一致时脚本在确认提示之前就直接报错退出，不会出现「提示擦 A 盘、实际擦 B 盘」
+- 换盘时改 `nix/hosts/default.nix[nixos.<host>].diskDevice`，不要只改 `--disk`
 - 会要求确认；自动化环境可用 `--yes`
 - 会清空目标盘并运行 `disko`
 - 会把仓库同步到目标系统的 `/persistent/nixos-config`
@@ -249,15 +251,17 @@ bash nix/scripts/admin/sops.sh password-set '<sha512-hash>'
 - `init --create`：创建新的 `main.agekey`
 - `init --rotate [--yes]`：生成新的 `main.agekey`，更新 `secrets/keys/main.age.pub`，并保留旧 key 为 `.keys/main.agekey.pre-rotate.<timestamp>`
 - `reset [--yes]`：丢失 key 的恢复入口（旧 main+recovery 都无法解密时使用）。生成新的 `main` + `recovery` key，把 `.sops.yaml` 的 `&main`/`&recovery` 锚点改写为新公钥，交互提示输入新登录密码（`mkpasswd -m sha-512`，写入 user + root），并重建 `aria2-rpc-secret.yaml`；旧 secret 内容永久作废。完成后需备份新的 `recovery.agekey`，并在装好的系统上提交更新后的 `.sops.yaml` 与 `secrets/`
+- `recovery-init [--force]`：缺 `recovery.agekey` 时创建，并把公钥写入 `secrets/keys/recovery.age.pub`；`--force` 表示即使已存在也重新生成
+- `host-add`：把 host SSH public key 同步到 `secrets/keys/hosts/<host>.ssh_host_ed25519.pub`（该目录下的 `*.pub` 属于 `guard-secrets.sh` 允许提交的公钥元数据）
 - `rekey`：先校验 `.sops.yaml` 必须包含 `secrets/common/`、`secrets/hosts/<host>/`、`secrets/users/<user>/`、`secrets/install/`，且不得退回 `^secrets/.*\.yaml$` catch-all；再基于当前 `main.agekey`、`recovery.agekey` 和现存 rotation backup keys 构造 identity file，然后对每个 secret 执行 `sops rotate -i --add-age/--rm-age`
 - `recipients`：列出当前收件人
-- `host-add`：把 host SSH public key 同步到 `secrets/keys/hosts/`
 - `ssh-key-set`：默认把 `.keys/github_id_ed25519` 写入当前主用户的 `secrets/users/<user>/ssh/`；需要覆盖目标用户时设置 `SOPS_USER=<user>`
 
 注意：
 
 - 需要非交互确认时，直接调用 `nix/scripts/admin/sops.sh init --rotate --yes`
 - rotation 完成后，旧 backup key 仍需保留到 `rekey` 和系统切换完成
+- `reset` 与 `recovery-init --force` 重新生成 key 时，若目标文件已存在，会先移到 `<key>.pre-reset.<timestamp>` 再生成新 key；旧私钥不会被就地销毁，确认新 key 可用后自行删除备份
 - `run_sops_encrypt_yaml` 现在先写临时文件，再原子替换，避免加密失败时截断原 secret
 
 当前 secret 路径约定：
@@ -292,7 +296,7 @@ bash nix/scripts/admin/sops.sh password-set '<sha512-hash>'
 - Linux `desktopProfile` 当前只支持 `niri`
 - `nix/home/configs/noctalia/` 是 Noctalia runtime config 的 seed；GUI 修改持久化到 `~/.local/state/noctalia/config`，不要再依赖 GUI 直接改 tracked config；seed 提交流程见 `docs/NIX-COMMANDS.md`
 - 修改 host metadata 后运行 `just self-check` 和 `just validate-local`
-- 修改脚本入口后运行 `just self-check` 或至少 `bash -n nix/scripts/admin/*.sh`；可用时再运行 `shellcheck nix/scripts/admin/*.sh` 与 `shfmt -i 2 -d nix/scripts/admin/*.sh`
+- 修改脚本入口后运行 `just self-check`；手动兜底时注意 `bash -n` 只解析第一个文件参数，必须逐个检查：`for f in nix/scripts/admin/*.sh; do bash -n "$f"; done`。`shellcheck nix/scripts/admin/*.sh` 与 `shfmt -i 2 -d nix/scripts/admin/*.sh` 可以直接接多个文件
 - 修改 Nix 模块或 flake 聚合后运行 `just validate-local`，需要执行 check build 时直接运行 `nix flake check --all-systems`
 
 ## 9. FAQ

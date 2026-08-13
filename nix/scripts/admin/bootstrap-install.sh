@@ -17,6 +17,7 @@ usage() {
   cat <<'EOF'
 usage:
   bootstrap-install.sh --host <name> --disk <device> [--repo <path>] [--yes]
+                       [--reset-secrets]
 
 examples:
   bash nix/scripts/admin/bootstrap-install.sh --host zly --disk /dev/nvme0n1

@@ -40,7 +40,7 @@ just clean
 
 ## 本地验证基线
 
-仓库当前以本地验证为准（不依赖 CI gate），推送前至少执行：
+仓库以本地验证为准。GitHub workflow（`.github/workflows/secret-guard.yml`）只跑轻量 `self-check` 与 secrets 全量巡检，不能替代本地验证。推送前至少执行：
 
 ```bash
 nix develop
@@ -56,7 +56,7 @@ nix flake check --all-systems
 
 ## 风险提示
 
-- `install-live.sh` 会清盘
+- `install-live.sh` 会清盘；被清空的是 `nix/hosts/default.nix` 里该主机的 `diskDevice`，`--disk` 与之不一致时脚本直接报错退出
 - `sops.sh reset` / `bootstrap-install.sh --reset-secrets` 会生成新 key 并重建密码/aria2 secret（旧 secret 作废）
 - `switch` / `upgrade` 会直接改系统状态
 - `sops.sh init --rotate` 会生成新 `main.agekey`
