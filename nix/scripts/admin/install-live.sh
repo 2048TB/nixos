@@ -11,9 +11,13 @@ usage() {
 usage:
   install-live.sh --host <name> --disk <device> [--repo <path>] [--yes]
 
+  --disk must match the diskDevice declared for the host in
+  nix/hosts/default.nix; disko partitions the manifest value, so a mismatch
+  is rejected instead of silently erasing a different disk.
+
 examples:
   install-live.sh --host zly --disk /dev/nvme0n1
-  install-live.sh --host zky --disk /dev/sda --repo /path/to/repo
+  install-live.sh --host zky --disk /dev/nvme0n1 --repo /path/to/repo
 EOF
 }
 
@@ -28,6 +32,30 @@ main_pub_rel="secrets/keys/main.age.pub"
 
 run_nix_flake() {
   nix --extra-experimental-features 'nix-command flakes' "$@"
+}
+
+# disko partitions config.my.host.diskDevice from the host manifest, not the
+# --disk argument. Refuse to continue when they disagree, otherwise the
+# confirmation prompt would name one disk while disko erases another.
+require_disk_matches_manifest() {
+  local host_name="${1:?host name required}"
+  local requested_disk="${2:?disk path required}"
+  local manifest_disk=""
+
+  if ! manifest_disk="$(run_nix_flake eval --raw \
+    "path:${flake_repo}#nixosConfigurations.${host_name}.config.my.host.diskDevice")"; then
+    echo "error: failed to read diskDevice for host '$host_name' from the manifest" >&2
+    return 1
+  fi
+
+  if [ "$manifest_disk" != "$requested_disk" ]; then
+    echo "error: --disk does not match the disk declared for host '$host_name'" >&2
+    echo "  --disk   : $requested_disk" >&2
+    echo "  manifest : $manifest_disk" >&2
+    echo "hint: disko erases the manifest disk. Either pass --disk $manifest_disk," >&2
+    echo "      or update nix/hosts/default.nix[nixos.$host_name].diskDevice first." >&2
+    return 1
+  fi
 }
 
 require_mountpoint() {
@@ -232,6 +260,7 @@ require_git_checkout_repo "$repo"
 prepare_flake_repo_path "$repo"
 flake_repo="$PREPARED_FLAKE_REPO"
 validate_block_device_path "$disk"
+require_disk_matches_manifest "$host" "$disk"
 confirm_destructive_action \
   "INSTALL ${host} ${disk}" \
   "warning: this will erase disk ${disk} and install host ${host} from repo ${repo}" \
@@ -240,9 +269,9 @@ confirm_destructive_action \
 echo ">>> host=$host disk=$disk"
 
 # 1. Run disko
-disko_script="$(env NIXOS_DISK_DEVICE="$disk" run_nix_flake build --impure --no-link --print-out-paths "path:${flake_repo}#nixosConfigurations.${host}.config.system.build.diskoScript")"
+disko_script="$(run_nix_flake build --impure --no-link --print-out-paths "path:${flake_repo}#nixosConfigurations.${host}.config.system.build.diskoScript")"
 echo ">>> disko_script=$disko_script"
-sudo env NIXOS_DISK_DEVICE="$disk" "$disko_script"
+sudo "$disko_script"
 
 # 2. Verify mounts
 require_mountpoint /mnt/boot
@@ -264,7 +293,7 @@ else
 fi
 
 # 4. Run nixos-install (from source repo)
-sudo env NIXOS_DISK_DEVICE="$disk" nixos-install --impure --flake "path:${flake_repo}#$host"
+sudo nixos-install --impure --flake "path:${flake_repo}#$host"
 
 # 5. Sync flake into target /persistent/nixos-config (atomic replace)
 TARGET_FLAKE_DIR="/mnt/persistent/nixos-config"
