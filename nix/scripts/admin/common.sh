@@ -214,7 +214,7 @@ run_ssh_keygen() {
 }
 
 run_ssh_to_age() {
-  run_command_with_nix_fallback nixpkgs#age ssh-to-age "$@"
+  run_command_with_nix_fallback nixpkgs#ssh-to-age ssh-to-age "$@"
 }
 
 run_sops() {
