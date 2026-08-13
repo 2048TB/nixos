@@ -43,6 +43,7 @@ let
     enableSplayer = false;
     enableTelegramDesktop = false;
     enableLocalSend = false;
+    enableAntigravity = false;
   };
 in
 {
