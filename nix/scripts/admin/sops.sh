@@ -48,6 +48,25 @@ list_rotation_backup_keys() {
   find "$key_dir" -maxdepth 1 -type f -name 'main.agekey.pre-rotate.*' | sort
 }
 
+# Generate a fresh identity at key_path, replacing whatever is there.
+# Key files are kept at 0400, so age-keygen cannot write over them (the owner
+# gets EACCES too); the previous key is moved aside instead of deleted so a
+# still-valid identity is never destroyed by an overwrite.
+regenerate_age_key() {
+  local key_path="${1:?key path required}"
+  local backup_path=""
+
+  if [ -e "$key_path" ]; then
+    backup_path="${key_path}.pre-reset.$(date +%Y%m%d%H%M%S)"
+    mv "$key_path" "$backup_path"
+    chmod 0400 "$backup_path"
+    echo "kept previous key for manual recovery: $backup_path"
+  fi
+
+  run_age_keygen -o "$key_path" >/dev/null
+  chmod 0400 "$key_path"
+}
+
 build_identity_file() {
   local identity_file
 
@@ -432,7 +451,7 @@ cmd_recovery_init() {
   mkdir -p "$key_dir" "$secrets_key_dir"
 
   if [ "$force" -eq 1 ] || [ ! -f "$recovery_key" ]; then
-    run_age_keygen -o "$recovery_key" >/dev/null
+    regenerate_age_key "$recovery_key"
     echo "recovery identity ready: $recovery_key"
   fi
   chmod 0400 "$recovery_key"
@@ -569,12 +588,10 @@ cmd_reset() {
 
   mkdir -p "$key_dir" "$secrets_key_dir"
 
-  # 1. New main + recovery key pairs (overwrite any stale/partial files).
-  run_age_keygen -o "$main_key" >/dev/null
-  chmod 0400 "$main_key"
+  # 1. New main + recovery key pairs (any stale/partial file is moved aside).
+  regenerate_age_key "$main_key"
   run_age_keygen -y "$main_key" >"$main_pub"
-  run_age_keygen -o "$recovery_key" >/dev/null
-  chmod 0400 "$recovery_key"
+  regenerate_age_key "$recovery_key"
   run_age_keygen -y "$recovery_key" >"$recovery_pub"
   echo "generated new main + recovery keys"
 
