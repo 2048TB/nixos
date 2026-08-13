@@ -154,35 +154,49 @@ check_shell_shebangs() {
   done < <(list_shell_files)
 }
 
-parse_yaml_file() {
-  local file="${1:?file path required}"
-  if command -v yq >/dev/null 2>&1; then
-    yq '.' "$file" >/dev/null
-    return
+yaml_parser=""
+
+# Pick the YAML parser once so a missing parser is reported as a missing tool
+# instead of surfacing as "every YAML file is broken".
+resolve_yaml_parser() {
+  if [ -n "$yaml_parser" ]; then
+    return 0
   fi
 
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v yq >/dev/null 2>&1; then
+    yaml_parser="yq"
+  elif command -v python3 >/dev/null 2>&1 && python3 -c 'import yaml' >/dev/null 2>&1; then
+    yaml_parser="python3"
+  elif command -v ruby >/dev/null 2>&1; then
+    yaml_parser="ruby"
+  else
+    return 1
+  fi
+}
+
+parse_yaml_file() {
+  local file="${1:?file path required}"
+
+  case "$yaml_parser" in
+  yq)
+    yq '.' "$file" >/dev/null
+    ;;
+  python3)
     python3 - "$file" <<'PY'
 import sys
-
-try:
-    import yaml
-except Exception as exc:
-    sys.stderr.write(f"python YAML parser unavailable: {exc}\n")
-    sys.exit(2)
+import yaml
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     yaml.safe_load(handle)
 PY
-    return
-  fi
-
-  if command -v ruby >/dev/null 2>&1; then
+    ;;
+  ruby)
     ruby -e 'require "yaml"; YAML.load_file(ARGV.fetch(0))' "$file"
-    return
-  fi
-
-  return 127
+    ;;
+  *)
+    return 127
+    ;;
+  esac
 }
 
 check_yaml_files() {
@@ -191,6 +205,11 @@ check_yaml_files() {
   sops_file="$repo_root/.sops.yaml"
   if [ ! -f "$sops_file" ]; then
     fail ".sops.yaml is missing"
+  fi
+
+  if ! resolve_yaml_parser; then
+    fail "yq, python3 with PyYAML, or ruby is required to parse YAML files"
+    return
   fi
 
   while IFS= read -r -d '' file; do
