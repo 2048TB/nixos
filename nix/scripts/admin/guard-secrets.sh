@@ -112,7 +112,7 @@ is_allowed_plain_secret_path() {
   case "$file" in
   secrets/**/.gitkeep | \
     secrets/keys/README.md | \
-    secrets/keys/hosts/*.age.pub | \
+    secrets/keys/hosts/*.pub | \
     secrets/keys/*.age.pub)
     return 0
     ;;
