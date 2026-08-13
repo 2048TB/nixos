@@ -45,7 +45,8 @@ self-check:
     @echo ">>> justfile"
     @just --list >/dev/null
     @echo ">>> bash syntax"
-    @bash -n "{{script_repo}}"/nix/scripts/admin/*.sh "{{script_repo}}"/.githooks/pre-commit
+    @# bash -n only parses its first file argument; check each script separately.
+    @for f in "{{script_repo}}"/nix/scripts/admin/*.sh "{{script_repo}}"/.githooks/pre-commit; do bash -n "$f" || exit 1; done
     @echo ">>> shellcheck"
     @if command -v shellcheck >/dev/null 2>&1; then shellcheck "{{script_repo}}"/nix/scripts/admin/*.sh "{{script_repo}}"/.githooks/pre-commit; else echo "warning: shellcheck not found; skipping shellcheck" >&2; fi
     @echo ">>> shfmt"
